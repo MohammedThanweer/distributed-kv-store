@@ -9,10 +9,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class KVServer 
 {
 
-	private static final int PORT = 7000;
+	private static final int PORT = 7001;
+	private static final Logger logger = LoggerFactory.getLogger(KVServer.class);
 
 	public static void main(String[] args) throws IOException 
 	{
@@ -25,14 +29,14 @@ public class KVServer
 		try 
 		{
 			serverSocket = new ServerSocket(PORT);
-			System.out.println("KV Server listening on port " + PORT);
+			logger.info("KV Server started on port {}", PORT);	
 
 			while (true) 
 			{
 
 				final Socket client = serverSocket.accept();
 
-				System.out.println("Client connected: "+ client.getRemoteSocketAddress());
+				logger.info("Client connected: {}", client.getRemoteSocketAddress());
 
 				Runnable clientTask = new Runnable() 
 				{
@@ -51,8 +55,7 @@ public class KVServer
 		catch (IOException exception) 
 		{
 
-			System.err.println("Server error: " + exception.getMessage());
-
+			logger.error("Server encountered an I/O error", exception);
 		} 
 		finally 
 		{
@@ -66,7 +69,7 @@ public class KVServer
 				} 
 				catch (IOException exception) 
 				{
-					System.err.println("Error closing server socket");
+					logger.error("Error closing server socket",exception);				
 				}
 			}
 		}
@@ -78,7 +81,8 @@ public class KVServer
 		BufferedReader reader = null;
 		PrintWriter writer = null;
 
-		try {
+		try 
+		{
 			reader = new BufferedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.UTF_8));
 
 			writer = new PrintWriter(client.getOutputStream(), true, StandardCharsets.UTF_8);
@@ -87,17 +91,17 @@ public class KVServer
 
 			while ((command = reader.readLine()) != null) 
 			{
-
+				logger.debug("Received command: {}", command);
 				String response = handler.handle(command);
 				writer.println(response);
+				logger.debug("Sent response: {}", response);
 			}
 
 		} 
 		catch (IOException exception) 
 		{
 
-			System.err.println("Client connection error: "+ exception.getMessage());
-
+			logger.error("Error handling client {}", client.getRemoteSocketAddress(), exception);
 		} 
 		finally 
 		{
@@ -110,7 +114,7 @@ public class KVServer
 				} 
 				catch (IOException exception) 
 				{
-					System.err.println("Error closing reader");
+					logger.warn("Error closing client reader", exception);
 				}
 			}
 
@@ -127,7 +131,7 @@ public class KVServer
 				} 
 				catch (IOException exception) 
 				{
-					System.err.println("Error closing client socket");
+					logger.warn("Error closing client socket", exception);				
 				}
 			}
 		}
