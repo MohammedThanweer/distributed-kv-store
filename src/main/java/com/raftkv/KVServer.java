@@ -15,21 +15,47 @@ import org.slf4j.LoggerFactory;
 public class KVServer 
 {
 
-	private static final int PORT = 7001;
 	private static final Logger logger = LoggerFactory.getLogger(KVServer.class);
 
 	public static void main(String[] args) throws IOException 
 	{
+		
+		String nodeId = args.length > 0 ? args[0] : "node1";
+		int port = args.length > 1 ? Integer.parseInt(args[1]) : 7001;
 
 		KeyValueStore store = new KeyValueStore();
-		CommandHandler handler = new CommandHandler(store);
+		CommandHandler handler = new CommandHandler(store, nodeId);
 
 		ServerSocket serverSocket = null;
 
 		try 
 		{
-			serverSocket = new ServerSocket(PORT);
-			logger.info("KV Server started on port {}", PORT);	
+			serverSocket = new ServerSocket(port);
+
+			final ServerSocket activeServerSocket = serverSocket;
+			final int serverPort = port;
+
+			Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() 
+			{
+    				@Override
+    				public void run() 
+				{
+        				try 
+					{
+            					if (!activeServerSocket.isClosed()) 
+						{
+                					activeServerSocket.close();
+            					}
+            					logger.info("Server on port {} stopped", serverPort);
+        				} 
+					catch (IOException exception) 
+					{
+            					logger.error("Error shutting down server on port {}", serverPort, exception);
+        				}
+    				}
+			}));
+
+			logger.info("KV Server started on port {}", port);	
 
 			while (true) 
 			{
