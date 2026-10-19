@@ -26,6 +26,9 @@ public class KVServer
 		KeyValueStore store = new KeyValueStore();
 		CommandHandler handler = new CommandHandler(store, nodeId);
 
+		PeerHeartbeat heartbeat = new PeerHeartbeat(nodeId);
+		heartbeat.start();
+
 		ServerSocket serverSocket = null;
 
 		try 
@@ -98,6 +101,7 @@ public class KVServer
 					logger.error("Error closing server socket",exception);				
 				}
 			}
+			heartbeat.stop();
 		}
 	}
 
@@ -106,7 +110,6 @@ public class KVServer
 
 		BufferedReader reader = null;
 		PrintWriter writer = null;
-
 		try 
 		{
 			reader = new BufferedReader(new InputStreamReader(client.getInputStream(),StandardCharsets.UTF_8));

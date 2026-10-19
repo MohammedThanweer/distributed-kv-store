@@ -2,8 +2,13 @@ package com.raftkv;
 
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class CommandHandler 
 {
+	private static final Logger logger = LoggerFactory.getLogger(CommandHandler.class);
+
 	private final String nodeId;
 	private final KeyValueStore store;
 
@@ -74,7 +79,7 @@ public class CommandHandler
 				}
 
 			case "PING":
-				
+				logger.info("{} received PING request", nodeId);
     				return "PONG " + nodeId;
 
 			case "RPC_PING":
