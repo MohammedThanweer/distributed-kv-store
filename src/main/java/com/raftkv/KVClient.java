@@ -15,8 +15,8 @@ import org.slf4j.LoggerFactory;
 public class KVClient {
 
 	private static final Logger logger = LoggerFactory.getLogger(KVClient.class);
-	private static final String HOST = "localhost";
-	private static final int PORT = 7001;
+	private static final String HOST = ConfManager.getNode1Host();
+	private static final int PORT = ConfManager.getNode1Port();
 
 	public static void main(String[] args) {
 

@@ -20,8 +20,8 @@ public class KVServer
 	public static void main(String[] args) throws IOException 
 	{
 		
-		String nodeId = args.length > 0 ? args[0] : "node1";
-		int port = args.length > 1 ? Integer.parseInt(args[1]) : 7001;
+		String nodeId = args.length > 0 ? args[0] : ConfManager.getNode1Id();
+		int port = args.length > 1 ? Integer.parseInt(args[1]) : ConfManager.getNode1Port();
 
 		KeyValueStore store = new KeyValueStore();
 		CommandHandler handler = new CommandHandler(store, nodeId);
@@ -31,7 +31,7 @@ public class KVServer
 
 		ServerSocket serverSocket = null;
 
-		try 
+		try
 		{
 			serverSocket = new ServerSocket(port);
 

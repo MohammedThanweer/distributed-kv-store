@@ -1,5 +1,7 @@
 package com.raftkv;
 
+import com.raftkv.ConfManager;
+
 import java.util.Optional;
 
 import org.slf4j.Logger;
@@ -12,6 +14,13 @@ public class CommandHandler
 	private final String nodeId;
 	private final KeyValueStore store;
 
+	private static final String GET = ConfManager.getCommandGet();
+	private static final String PUT = ConfManager.getCommandPut();
+	private static final String DELETE = ConfManager.getCommandDelete();
+	private static final String PING = ConfManager.getCommandPing();
+	private static final String RPC_PING = ConfManager.getCommandRpcPing();
+
+
 	public CommandHandler(KeyValueStore store, String nodeId) 
 	{
 		this.store = store;
@@ -19,7 +28,7 @@ public class CommandHandler
 	}
 	public CommandHandler(KeyValueStore store) 
 	{
-    		this(store, "node");
+    		this(store, ConfManager.getNodeId());
 	}
 
 	public String handle(String command) 

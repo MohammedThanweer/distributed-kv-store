@@ -17,6 +17,14 @@ public class PeerHeartbeat
 	private final ScheduledExecutorService scheduler;
 	private String[][] peers;
 
+	private String node1 = ConfManager.getNode1Id();
+	private String node2 = ConfManager.getNode2Id();
+	private String node3 = ConfManager.getNode3Id();
+
+	private String node1Port = String.valueOf(ConfManager.getNode1Port());
+	private String node2Port = String.valueOf(ConfManager.getNode2Port());
+	private String node3Port = String.valueOf(ConfManager.getNode3Port());
+
 	public PeerHeartbeat(String nodeId) 
 	{
 		this.nodeId = nodeId;
@@ -27,17 +35,17 @@ public class PeerHeartbeat
 
 	private void configurePeers() 
 	{
-		if ("node1".equals(nodeId)) 
+		if (node1.equals(nodeId)) 
 		{
-			peers = new String[][] {{"node2", "7002"}, {"node3", "7003"}};
+			peers = new String[][] {{node2, node2Port}, {node3, node3Port}};
 		} 
-		else if ("node2".equals(nodeId)) 
+		else if (node2.equals(nodeId)) 
 		{
-			peers = new String[][] {{"node1", "7001"}, {"node3", "7003"}};
+			peers = new String[][] {{node1, node1Port}, {node3, node3Port}};
 		} 
-		else if ("node3".equals(nodeId)) 
+		else if (node3.equals(nodeId)) 
 		{
-			peers = new String[][] {{"node1", "7001"}, {"node2", "7002"}};
+			peers = new String[][] {{node1, node1Port}, {node2, node2Port}};
 		} 
 		else 
 		{
@@ -56,7 +64,7 @@ public class PeerHeartbeat
 			{
 				sendHeartbeats();
 			}
-		}, 5, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS);
+		}, ConfManager.getHeartbeatInitialDelaySeconds(), ConfManager.getHeartbeatIntervalSeconds(), TimeUnit.SECONDS);
 	}
 
 	private void sendHeartbeats() {
