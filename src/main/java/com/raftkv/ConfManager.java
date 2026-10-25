@@ -10,6 +10,8 @@ public final class ConfManager
 
 	private static final Map<String, String> CONFIG;
 
+	private static final int INITIAL_RAFT_TERM = 0;
+
 	private static final String NODE_ID = "node";
 	private static final String NODE1_ID = "node1";
 	private static final String NODE2_ID = "node2";
@@ -56,7 +58,18 @@ public final class ConfManager
 	private static final String SPACE = " ";
 	private static final String COLON = ":";
 
+	private static final String CONFIG_ELECTION_TIMEOUT_MIN = "ELECTION_TIMEOUT_MIN_MS";
+	private static final String CONFIG_ELECTION_TIMEOUT_MAX = "ELECTION_TIMEOUT_MAX_MS";
+
 	private static final String UNKNOWN_CONFIG_MESSAGE = "Unknown configuration key: ";
+
+	private static final String REQUEST_VOTE_COMMAND = "REQUEST_VOTE";
+	private static final String VOTE_GRANTED_PREFIX = "VOTE_GRANTED";
+	private static final String VOTE_REJECTED_PREFIX = "VOTE_REJECTED";
+
+	private static final String ELECTION_TIMEOUT_MIN_MS = "3000";
+	private static final String ELECTION_TIMEOUT_MAX_MS = "5000";
+	private static final String RAFT_HEARTBEAT_INTERVAL_MS = "1000";
 
 	static 
 	{
@@ -66,6 +79,9 @@ public final class ConfManager
 		values.put(CONFIG_HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL_SECONDS);
 		values.put(CONFIG_CONNECTION_TIMEOUT, CONNECTION_TIMEOUT_MS);
 		values.put(CONFIG_READ_TIMEOUT, READ_TIMEOUT_MS);
+
+		values.put(CONFIG_ELECTION_TIMEOUT_MIN, ELECTION_TIMEOUT_MIN_MS);
+		values.put(CONFIG_ELECTION_TIMEOUT_MAX, ELECTION_TIMEOUT_MAX_MS);
 
 		CONFIG = Collections.unmodifiableMap(values);
 	}
@@ -252,5 +268,39 @@ public final class ConfManager
 	public static String getColon() 
 	{ 
 		return COLON; 
-	} 
+	}
+
+	public static int getInitialRaftTerm()
+	{
+		return INITIAL_RAFT_TERM;
+	}
+	public static int getElectionTimeoutMinMs()
+	{
+		return Integer.parseInt(ELECTION_TIMEOUT_MIN_MS);
+	}
+
+	public static int getElectionTimeoutMaxMs()
+	{
+		return Integer.parseInt(ELECTION_TIMEOUT_MAX_MS);
+	}
+
+	public static String getRequestVoteCommand()
+	{
+		return REQUEST_VOTE_COMMAND;
+	}
+
+	public static String getVoteGrantedPrefix()
+	{
+		return VOTE_GRANTED_PREFIX;
+	}
+
+	public static String getVoteRejectedPrefix()
+	{
+		return VOTE_REJECTED_PREFIX;
+	}
+
+	public static int getRaftHeartbeatIntervalMs()
+	{
+		return Integer.parseInt(RAFT_HEARTBEAT_INTERVAL_MS);
+	}
 }

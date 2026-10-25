@@ -20,16 +20,18 @@ public class CommandHandler
 	private static final String PING = ConfManager.getCommandPing();
 	private static final String RPC_PING = ConfManager.getCommandRpcPing();
 
+	private final RaftNode raftNode;
 
-	public CommandHandler(KeyValueStore store, String nodeId) 
+	public CommandHandler(KeyValueStore store, String nodeId, RaftNode raftNode) 
 	{
-		this.store = store;
-		this.nodeId = nodeId;
+	    	this.store = store;
+	    	this.nodeId = nodeId;
+	    	this.raftNode = raftNode;
 	}
-	public CommandHandler(KeyValueStore store) 
+	/*public CommandHandler(KeyValueStore store)
 	{
-    		this(store, ConfManager.getNodeId());
-	}
+    		this(store, ConfManager.getNodeId(), raftNode);
+	}*/
 
 	public String handle(String command) 
 	{
@@ -107,6 +109,62 @@ public class CommandHandler
 				{
         				return "ERROR Invalid port";
     				}
+			case "REQUEST_VOTE":
+				String[] voteParts = command.split(" ");
+				if (voteParts.length != 3) 
+				{
+					return "VOTE_REJECTED " + raftNode.getCurrentTerm();
+				}
+
+				String candidateId = voteParts[1];
+				long candidateTerm;
+
+				try 
+				{
+					candidateTerm = Long.parseLong(voteParts[2]);
+				} 
+				catch (NumberFormatException exception) 
+				{
+					return "VOTE_REJECTED " + raftNode.getCurrentTerm();
+				}
+
+				boolean voteGranted = raftNode.requestVote(candidateId, candidateTerm);
+
+				if (voteGranted) 
+				{
+					return "VOTE_GRANTED " + raftNode.getCurrentTerm();
+				}
+
+				return "VOTE_REJECTED " + raftNode.getCurrentTerm();
+
+			case "APPEND_ENTRIES":
+				String[] appendParts = command.trim().split("\\s+");
+
+				if (appendParts.length != 3)
+				{
+					return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
+				}
+
+				String leaderId = appendParts[1];
+				long leaderTerm;
+
+				try
+				{
+					leaderTerm = Long.parseLong(appendParts[2]);
+				}
+				catch (NumberFormatException exception)
+				{
+					return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
+				}
+
+				boolean accepted = raftNode.handleAppendEntries(leaderId, leaderTerm);
+
+				if (accepted)
+				{
+					return "APPEND_ENTRIES_OK " + raftNode.getCurrentTerm();
+				}
+
+				return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
 
 			default:
 				return "ERROR Unknown command";

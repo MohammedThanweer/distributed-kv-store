@@ -24,16 +24,18 @@ public class KVServer
 		int port = args.length > 1 ? Integer.parseInt(args[1]) : ConfManager.getNode1Port();
 
 		KeyValueStore store = new KeyValueStore();
-		CommandHandler handler = new CommandHandler(store, nodeId);
+		RaftNode raftNode = new RaftNode(nodeId);
+		CommandHandler handler = new CommandHandler(store, nodeId, raftNode);
 
 		PeerHeartbeat heartbeat = new PeerHeartbeat(nodeId);
-		heartbeat.start();
+		//heartbeat.start();
 
 		ServerSocket serverSocket = null;
 
 		try
 		{
 			serverSocket = new ServerSocket(port);
+			raftNode.startElectionTimeout();
 
 			final ServerSocket activeServerSocket = serverSocket;
 			final int serverPort = port;
@@ -65,7 +67,7 @@ public class KVServer
 
 				final Socket client = serverSocket.accept();
 
-				logger.info("Client connected: {}", client.getRemoteSocketAddress());
+				logger.debug("Client connected: {}", client.getRemoteSocketAddress());
 
 				Runnable clientTask = new Runnable() 
 				{
@@ -101,7 +103,8 @@ public class KVServer
 					logger.error("Error closing server socket",exception);				
 				}
 			}
-			heartbeat.stop();
+			raftNode.stopElectionTimeout();
+			//heartbeat.stop();
 		}
 	}
 

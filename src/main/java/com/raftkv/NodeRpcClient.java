@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 import org.slf4j.Logger;
@@ -23,9 +24,13 @@ public class NodeRpcClient
 
 		try 
 		{
-			socket = new Socket(host, port);
+			socket = new Socket();
+			socket.connect(new InetSocketAddress(host, port),ConfManager.getConnectionTimeoutMs());
+			socket.setSoTimeout(ConfManager.getReadTimeoutMs());
 			reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 			writer = new PrintWriter(socket.getOutputStream(), true, StandardCharsets.UTF_8);
+			
+			System.out.println("-------> REQUEST --------> "+ request);
 
 			writer.println(request);
 
@@ -36,6 +41,7 @@ public class NodeRpcClient
 			}
 
 			String response = reader.readLine();
+			System.out.println("*****RESPONSE*****"+ response);
 
 			if (response == null) 
 			{
