@@ -1,7 +1,11 @@
 package com.raftkv;
 
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -19,6 +23,10 @@ public class RaftNode
 	private final ScheduledExecutorService electionRpcExecutor;
 	private final ScheduledExecutorService leaderHeartbeatScheduler;
 	private ScheduledFuture<?> leaderHeartbeatTask;
+	private final List<LogEntry> logEntries;
+	private long commitIndex;
+	private long lastApplied;
+	private final KeyValueStore store;
 
 	public enum State
 	{
@@ -34,8 +42,9 @@ public class RaftNode
 
 	private final ScheduledExecutorService electionScheduler;
 	private ScheduledFuture<?> electionTimeoutTask;
+	private final Map<String, Long> matchIndex;
 
-	public RaftNode(String nodeId)
+	public RaftNode(String nodeId, KeyValueStore store)
 	{
 		this.nodeId = nodeId;
 		this.state = State.FOLLOWER;
@@ -43,6 +52,15 @@ public class RaftNode
 		this.votedFor = null;
 		this.electionRpcExecutor = Executors.newSingleThreadScheduledExecutor();
 		this.leaderHeartbeatScheduler = Executors.newSingleThreadScheduledExecutor();
+		this.logEntries = new ArrayList<LogEntry>();
+		this.commitIndex = 0L;
+		this.lastApplied = 0L;
+		this.matchIndex = new HashMap<String, Long>();
+		this.store = store;
+
+		this.matchIndex.put(ConfManager.getNode1Id(), 0L);
+		this.matchIndex.put(ConfManager.getNode2Id(), 0L);
+		this.matchIndex.put(ConfManager.getNode3Id(), 0L);
 
 		this.electionScheduler = Executors.newSingleThreadScheduledExecutor(
 			new java.util.concurrent.ThreadFactory()
@@ -443,11 +461,13 @@ public class RaftNode
 		}, 0, ConfManager.getRaftHeartbeatIntervalMs(), TimeUnit.MILLISECONDS);
 	}
 
+	
 	private void sendLeaderHeartbeats()
 	{
 		String[] peerIds = {ConfManager.getNode1Id(), ConfManager.getNode2Id(), ConfManager.getNode3Id()};
 
 		long leaderTerm;
+		long leaderCommitIndex;
 
 		synchronized (this)
 		{
@@ -457,6 +477,7 @@ public class RaftNode
 			}
 
 			leaderTerm = currentTerm;
+			leaderCommitIndex = commitIndex;
 		}
 
 		for (String peerId : peerIds)
@@ -475,11 +496,46 @@ public class RaftNode
 
 			String[] addressParts = address.split(ConfManager.getColon());
 
-			String request = "APPEND_ENTRIES " + nodeId + " " + leaderTerm;
+			// Always send a heartbeat, even when the log is empty.
+			String heartbeatRequest =
+				ConfManager.getAppendEntriesCommand()
+				+ ConfManager.getSpace() + nodeId
+				+ ConfManager.getSpace() + leaderTerm
+				+ ConfManager.getSpace() + leaderCommitIndex;
 
-			String response = rpcClient.sendRequest(addressParts[0],Integer.parseInt(addressParts[1]), request);
+			String heartbeatResponse = rpcClient.sendRequest(
+					addressParts[0],
+					Integer.parseInt(addressParts[1]),
+					heartbeatRequest);
 
-			logger.debug("{} sent heartbeat to {}: {}", nodeId, peerId, response);
+			logger.debug("{} sent heartbeat to {}: {}",
+					nodeId, peerId, heartbeatResponse);
+
+			// Replicate any existing log entries after the heartbeat.
+			List<LogEntry> entries = getLogEntries();
+
+			for (LogEntry entry : entries)
+			{
+				String encodedCommand = Base64.getEncoder().encodeToString(
+						entry.getCommand().getBytes(
+							java.nio.charset.StandardCharsets.UTF_8));
+
+				String entryRequest =
+					ConfManager.getAppendEntriesCommand()
+					+ ConfManager.getSpace() + nodeId
+					+ ConfManager.getSpace() + leaderTerm
+					+ ConfManager.getSpace() + entry.getIndex()
+					+ ConfManager.getSpace() + entry.getTerm()
+					+ ConfManager.getSpace() + encodedCommand
+					+ ConfManager.getSpace() + leaderCommitIndex;
+
+
+				String entryResponse = rpcClient.sendRequest(addressParts[0], Integer.parseInt(addressParts[1]),entryRequest);
+
+				logger.debug("{} received replication response for entry {} from {}: {}", nodeId, entry.getIndex(), peerId, entryResponse);
+
+				processReplicationResponse(peerId, entry.getIndex(), leaderTerm, entryResponse);
+			}
 		}
 	}
 	private synchronized void scheduleElectionRetry()
@@ -526,4 +582,348 @@ public class RaftNode
 
 		logger.debug("{} election retry scheduled after {} ms", nodeId, timeout);
 	}
+	public synchronized LogEntry appendLocalEntry(String command)
+	{
+		if (state != State.LEADER)
+		{
+			logger.warn("{} cannot append a client command because it is not leader", nodeId);
+			return null;
+		}
+
+		long index = logEntries.size() + 1L;
+		LogEntry entry = new LogEntry(index, currentTerm, command);
+
+		logEntries.add(entry);
+
+		logger.info("{} appended log entry {}", nodeId, entry);
+
+		return entry;
+	}
+
+
+	public synchronized LogEntry appendClientCommand(String command)
+	{
+		if (state != State.LEADER)
+		{
+			logger.warn("{} rejected client write because it is not the leader",
+					nodeId);
+			return null;
+		}
+
+		return appendLocalEntry(command);
+	}
+
+
+	public synchronized List<LogEntry> getLogEntries()
+	{
+		return Collections.unmodifiableList(new ArrayList<LogEntry>(logEntries));
+	}
+
+	public synchronized boolean handleAppendEntries(String leaderId, long leaderTerm, LogEntry entry)
+	{
+		if (entry == null)
+		{
+			return false;
+		}
+
+		if (entry.getIndex() < 1 || entry.getTerm() < 0)
+		{
+    			return false;
+		}
+
+		if (!handleAppendEntries(leaderId, leaderTerm))
+		{
+			return false;
+		}
+
+		long expectedIndex = logEntries.size() + 1L;
+
+		if (entry.getIndex() <= logEntries.size())
+		{
+			LogEntry existingEntry = logEntries.get((int) entry.getIndex() - 1);
+
+			if (existingEntry.getIndex() == entry.getIndex() && existingEntry.getTerm() == entry.getTerm()&& existingEntry.getCommand().equals(entry.getCommand()))
+			{
+				return true;
+			}
+
+			logger.warn("{} rejected conflicting log entry at index {}", nodeId, entry.getIndex());
+			return false;
+		}
+
+		if (entry.getIndex() != expectedIndex)
+		{
+			logger.warn("{} expected log index {} but received {}", nodeId, expectedIndex, entry.getIndex());
+			return false;
+		}
+
+		logEntries.add(entry);
+
+		logger.info("{} stored replicated log entry {} from {}", nodeId, entry, leaderId);
+
+		return true;
+	}
+	public synchronized long getCommitIndex()
+	{
+		return commitIndex;
+	}
+
+	public synchronized long getLastApplied()
+	{
+		return lastApplied;
+	}
+
+	public synchronized void recordReplicationAcknowledgement(String followerId, long acknowledgedIndex)
+	{
+		if (state != State.LEADER)
+		{
+			return;
+		}
+
+		if (!matchIndex.containsKey(followerId))
+		{
+			logger.warn("{} received acknowledgement from unknown node {}", nodeId, followerId);
+			return;
+		}
+
+		long lastLogIndex = logEntries.size();
+
+		if (acknowledgedIndex < 0 || acknowledgedIndex > lastLogIndex)
+		{
+			logger.warn("{} received invalid replication index {} from {}", nodeId, acknowledgedIndex, followerId);
+			return;
+		}
+
+		long previousIndex = matchIndex.get(followerId);
+
+		if (acknowledgedIndex > previousIndex)
+		{
+			matchIndex.put(followerId, acknowledgedIndex);
+
+			logger.info("{} recorded replication acknowledgement from {} up to index {}", nodeId, followerId, acknowledgedIndex);
+		}
+	}
+
+	public synchronized long getMatchIndex(String peerId)
+	{
+		Long index = matchIndex.get(peerId);
+
+		if (index == null)
+		{
+			return 0L;
+		}
+
+		return index;
+	}
+
+
+	private void processReplicationResponse(String followerId, long entryIndex, long leaderTerm, String response)
+	{
+		if (response == null)
+		{
+			return;
+		}
+
+		String[] responseParts = response.trim().split("\\s+");
+
+		if (responseParts.length != 2)
+		{
+			logger.warn("{} received an invalid replication response from {}: {}", nodeId, followerId, response);
+			return;
+		}
+
+		long responseTerm;
+
+		try
+		{
+			responseTerm = Long.parseLong(responseParts[1]);
+		}
+		catch (NumberFormatException exception)
+		{
+			logger.warn("{} received an invalid term from {}: {}", nodeId, followerId, response);
+			return;
+		}
+
+		synchronized (this)
+		{
+			if (responseTerm > currentTerm)
+			{
+				becomeFollower(responseTerm);
+				return;
+			}
+
+			if (state != State.LEADER || currentTerm != leaderTerm)
+			{
+				return;
+			}
+
+			if (responseTerm != leaderTerm)
+			{
+				return;
+			}
+
+			if (ConfManager.getAppendEntriesOkPrefix().equals(responseParts[0]))
+			{
+				recordReplicationAcknowledgement(followerId, entryIndex);
+				advanceCommitIndex();
+			}
+			else
+			{
+				logger.debug("{} did not receive confirmation for entry {} from {}: {}",
+						nodeId, entryIndex, followerId, response);
+			}
+		}
+	}
+	
+	private synchronized void advanceCommitIndex()
+	{
+		if (state != State.LEADER)
+		{
+			return;
+		}
+
+		int clusterSize = 3;
+		int majority = (clusterSize / 2) + 1;
+
+		for (long index = logEntries.size(); index > commitIndex; index--)
+		{
+			LogEntry entry = logEntries.get((int) index - 1);
+
+			if (entry.getTerm() != currentTerm)
+			{
+				continue;
+			}
+
+			int replicatedCount = 1; 
+
+			for (String peerId : matchIndex.keySet())
+			{
+				if (nodeId.equals(peerId))
+				{
+					continue;
+				}
+
+				if (matchIndex.get(peerId) >= index)
+				{
+					replicatedCount++;
+				}
+			}
+
+			if (replicatedCount >= majority)
+			{
+				commitIndex = index;
+
+				logger.info("{} advanced commitIndex to {} with {} replicas", nodeId, commitIndex, replicatedCount);
+
+				applyCommittedEntries();
+				return;
+			}
+		}
+	}
+
+
+	private synchronized void applyCommittedEntries()
+	{
+		while (lastApplied < commitIndex)
+		{
+			int entryPosition = (int) lastApplied;
+			LogEntry entry = logEntries.get(entryPosition);
+
+			String[] commandParts =
+				entry.getCommand().trim().split("\\s+", 3);
+
+			if (commandParts.length == 0)
+			{
+				logger.error("Cannot apply empty command at index {}",
+						entry.getIndex());
+				return;
+			}
+
+			String command = commandParts[0].toUpperCase();
+
+			if (ConfManager.getCommandPut().equals(command))
+			{
+				if (commandParts.length != 3)
+				{
+					logger.error("Invalid PUT at log index {}", entry.getIndex());
+					return;
+				}
+
+				store.put(commandParts[1], commandParts[2]);
+			}
+			else if (ConfManager.getCommandDelete().equals(command))
+			{
+				if (commandParts.length < 2)
+				{
+					logger.error("Invalid DELETE at log index {}",
+							entry.getIndex());
+					return;
+				}
+
+				store.delete(commandParts[1]);
+			}
+			else
+			{
+				logger.error("Unsupported log command at index {}: {}",
+						entry.getIndex(), entry.getCommand());
+				return;
+			}
+
+			lastApplied = entry.getIndex();
+
+			logger.info("{} applied committed entry {}",
+					nodeId, lastApplied);
+		}
+	}
+
+	private synchronized void updateCommitIndexFromLeader(long leaderCommitIndex)
+	{
+		if (leaderCommitIndex <= commitIndex)
+		{
+			return;
+		}
+
+		long newCommitIndex = Math.min(leaderCommitIndex, logEntries.size());
+
+		if (newCommitIndex > commitIndex)
+		{
+			commitIndex = newCommitIndex;
+
+			logger.info("{} updated commitIndex to {} from leader",
+					nodeId, commitIndex);
+
+			applyCommittedEntries();
+		}
+	}
+
+
+	public synchronized boolean handleAppendEntries(String leaderId, long leaderTerm, long leaderCommitIndex)
+	{
+		boolean accepted = handleAppendEntries(leaderId, leaderTerm);
+
+		if (!accepted)
+		{
+			return false;
+		}
+
+		updateCommitIndexFromLeader(leaderCommitIndex);
+
+		return true;
+	}
+
+	public synchronized boolean handleAppendEntries(String leaderId, long leaderTerm, LogEntry entry, long leaderCommitIndex)
+	{
+		boolean accepted = handleAppendEntries(leaderId, leaderTerm, entry);
+
+		if (!accepted)
+		{
+			return false;
+		}
+
+		updateCommitIndexFromLeader(leaderCommitIndex);
+
+		return true;
+	}
+
+	
 }

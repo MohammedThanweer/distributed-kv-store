@@ -46,14 +46,29 @@ public class CommandHandler
 		switch (parts[0].toUpperCase()) 
 		{
 
+
 			case "PUT":
-				if (parts.length < 3) 
+				if (parts.length < 3)
 				{
 					return "ERROR Usage: PUT <key> <value>";
 				}
 
-				store.put(parts[1], parts[2]);
-				return "OK";
+				if (raftNode.getState() != RaftNode.State.LEADER)
+				{
+					return "ERROR Not leader. Retry with the current leader.";
+				}
+
+				String putCommand = PUT + ConfManager.getSpace()
+					+ parts[1] + ConfManager.getSpace() + parts[2];
+
+				LogEntry putEntry = raftNode.appendClientCommand(putCommand);
+
+				if (putEntry == null)
+				{
+					return "ERROR Unable to append command";
+				}
+
+				return "ACCEPTED Log entry " + putEntry.getIndex();
 
 			case "GET":
 				if (parts.length != 2) 
@@ -140,9 +155,10 @@ public class CommandHandler
 			case "APPEND_ENTRIES":
 				String[] appendParts = command.trim().split("\\s+");
 
-				if (appendParts.length != 3)
+				if (appendParts.length != 3 && appendParts.length != 4 && appendParts.length != 6 && appendParts.length != 7)
 				{
-					return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
+					return ConfManager.getAppendEntriesRejectedPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
 				}
 
 				String leaderId = appendParts[1];
@@ -154,18 +170,82 @@ public class CommandHandler
 				}
 				catch (NumberFormatException exception)
 				{
-					return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
+					return ConfManager.getAppendEntriesRejectedPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
 				}
 
-				boolean accepted = raftNode.handleAppendEntries(leaderId, leaderTerm);
-
-				if (accepted)
+				
+				if (appendParts.length == 3 || appendParts.length == 4)
 				{
-					return "APPEND_ENTRIES_OK " + raftNode.getCurrentTerm();
+					long leaderCommitIndex = 0L;
+
+					if (appendParts.length == 4)
+					{
+						try
+						{
+							leaderCommitIndex = Long.parseLong(appendParts[3]);
+						}
+						catch (NumberFormatException exception)
+						{
+							return ConfManager.getAppendEntriesRejectedPrefix()
+								+ ConfManager.getSpace() + raftNode.getCurrentTerm();
+						}
+					}
+
+					boolean accepted = raftNode.handleAppendEntries(
+							leaderId, leaderTerm, leaderCommitIndex);
+
+					if (accepted)
+					{
+						return ConfManager.getAppendEntriesOkPrefix()
+							+ ConfManager.getSpace() + raftNode.getCurrentTerm();
+					}
+
+					return ConfManager.getAppendEntriesRejectedPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
 				}
 
-				return "APPEND_ENTRIES_REJECTED " + raftNode.getCurrentTerm();
+				long entryIndex;
+				long entryTerm;
+				String decodedCommand;
+				long leaderCommitIndex = 0L;
 
+				try
+				{
+					entryIndex = Long.parseLong(appendParts[3]);
+					entryTerm = Long.parseLong(appendParts[4]);
+
+					decodedCommand = new String(
+							java.util.Base64.getDecoder().decode(appendParts[5]),
+							java.nio.charset.StandardCharsets.UTF_8);
+					if (appendParts.length == 7)
+					{
+						leaderCommitIndex = Long.parseLong(appendParts[6]);
+					}
+				}
+				catch (IllegalArgumentException exception)
+				{
+					return ConfManager.getAppendEntriesRejectedPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
+				}
+
+				if (entryIndex < 1 || entryTerm < 0)
+				{
+					return ConfManager.getAppendEntriesRejectedPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
+				}
+
+				LogEntry entry = new LogEntry(entryIndex, entryTerm, decodedCommand);
+
+				boolean entryAccepted = raftNode.handleAppendEntries(leaderId, leaderTerm, entry, leaderCommitIndex);
+				if (entryAccepted)
+				{
+					return ConfManager.getAppendEntriesOkPrefix()
+						+ ConfManager.getSpace() + raftNode.getCurrentTerm();
+				}
+
+				return ConfManager.getAppendEntriesRejectedPrefix()
+					+ ConfManager.getSpace() + raftNode.getCurrentTerm();
 			default:
 				return "ERROR Unknown command";
 		}

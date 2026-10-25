@@ -71,6 +71,10 @@ public final class ConfManager
 	private static final String ELECTION_TIMEOUT_MAX_MS = "5000";
 	private static final String RAFT_HEARTBEAT_INTERVAL_MS = "1000";
 
+	private static final String APPEND_ENTRIES_COMMAND = "APPEND_ENTRIES";
+	private static final String APPEND_ENTRIES_OK_PREFIX = "APPEND_ENTRIES_OK";
+	private static final String APPEND_ENTRIES_REJECTED_PREFIX = "APPEND_ENTRIES_REJECTED";
+
 	static 
 	{
 		Map<String, String> values = new HashMap<String, String>();
@@ -302,5 +306,20 @@ public final class ConfManager
 	public static int getRaftHeartbeatIntervalMs()
 	{
 		return Integer.parseInt(RAFT_HEARTBEAT_INTERVAL_MS);
+	}
+
+	public static String getAppendEntriesCommand()
+	{
+		return APPEND_ENTRIES_COMMAND;
+	}
+
+	public static String getAppendEntriesOkPrefix()
+	{
+		return APPEND_ENTRIES_OK_PREFIX;
+	}
+
+	public static String getAppendEntriesRejectedPrefix()
+	{
+		return APPEND_ENTRIES_REJECTED_PREFIX;
 	}
 }

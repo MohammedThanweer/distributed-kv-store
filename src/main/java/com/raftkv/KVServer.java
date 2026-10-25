@@ -24,7 +24,7 @@ public class KVServer
 		int port = args.length > 1 ? Integer.parseInt(args[1]) : ConfManager.getNode1Port();
 
 		KeyValueStore store = new KeyValueStore();
-		RaftNode raftNode = new RaftNode(nodeId);
+		RaftNode raftNode = new RaftNode(nodeId, store);
 		CommandHandler handler = new CommandHandler(store, nodeId, raftNode);
 
 		PeerHeartbeat heartbeat = new PeerHeartbeat(nodeId);
