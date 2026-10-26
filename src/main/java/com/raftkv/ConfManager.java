@@ -75,6 +75,8 @@ public final class ConfManager
 	private static final String APPEND_ENTRIES_OK_PREFIX = "APPEND_ENTRIES_OK";
 	private static final String APPEND_ENTRIES_REJECTED_PREFIX = "APPEND_ENTRIES_REJECTED";
 
+	private static final long CLIENT_WRITE_TIMEOUT_MS = 5000L;
+
 	static 
 	{
 		Map<String, String> values = new HashMap<String, String>();
@@ -321,5 +323,10 @@ public final class ConfManager
 	public static String getAppendEntriesRejectedPrefix()
 	{
 		return APPEND_ENTRIES_REJECTED_PREFIX;
+	}
+
+	public static long getClientWriteTimeoutMs()
+	{
+		return CLIENT_WRITE_TIMEOUT_MS;
 	}
 }

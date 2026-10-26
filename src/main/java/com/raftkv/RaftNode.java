@@ -812,6 +812,7 @@ public class RaftNode
 			if (replicatedCount >= majority)
 			{
 				commitIndex = index;
+				notifyAll();
 
 				logger.info("{} advanced commitIndex to {} with {} replicas", nodeId, commitIndex, replicatedCount);
 
@@ -888,6 +889,7 @@ public class RaftNode
 		if (newCommitIndex > commitIndex)
 		{
 			commitIndex = newCommitIndex;
+			notifyAll();
 
 			logger.info("{} updated commitIndex to {} from leader",
 					nodeId, commitIndex);
@@ -925,5 +927,47 @@ public class RaftNode
 		return true;
 	}
 
-	
+
+	public synchronized boolean waitForCommit(long index, long timeoutMs)
+	{
+		long deadline = System.nanoTime()
+			+ TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+
+		while (commitIndex < index)
+		{
+			if (state != State.LEADER)
+			{
+				logger.warn("{} stepped down before entry {} was committed", nodeId, index);
+				return false;
+			}
+
+			long remainingNanos = deadline - System.nanoTime();
+
+			if (remainingNanos <= 0)
+			{
+				logger.warn("{} timed out waiting for entry {} to commit", nodeId, index);
+				return false;
+			}
+
+			try
+			{
+				long remainingMillis = TimeUnit.NANOSECONDS.toMillis(remainingNanos);
+
+				int remainingNanosPart = (int) (remainingNanos - TimeUnit.MILLISECONDS.toNanos(remainingMillis));
+
+				wait(remainingMillis, remainingNanosPart);
+			}
+			catch (InterruptedException exception)
+			{
+				Thread.currentThread().interrupt();
+
+				logger.warn("{} interrupted while waiting for entry {}", nodeId, index);
+
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 }

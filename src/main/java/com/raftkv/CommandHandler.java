@@ -68,7 +68,16 @@ public class CommandHandler
 					return "ERROR Unable to append command";
 				}
 
-				return "ACCEPTED Log entry " + putEntry.getIndex();
+				boolean committed = raftNode.waitForCommit(
+						putEntry.getIndex(),
+						ConfManager.getClientWriteTimeoutMs());
+
+				if (!committed)
+				{
+					return "ERROR Write not confirmed committed. Check the key before retrying.";
+				}
+
+				return "OK Log entry " + putEntry.getIndex() + " committed";
 
 			case "GET":
 				if (parts.length != 2) 
@@ -87,22 +96,39 @@ public class CommandHandler
 					return "NOT_FOUND";
 				}
 
+			
 			case "DELETE":
-				if (parts.length != 2) 
+				if (parts.length != 2)
 				{
 					return "ERROR Usage: DELETE <key>";
 				}
 
-				boolean deleted = store.delete(parts[1]);
-
-				if (deleted) 
+				if (raftNode.getState() != RaftNode.State.LEADER)
 				{
-					return "OK";
-				} 
-				else 
-				{
-					return "NOT_FOUND";
+					return "ERROR Not leader. Retry with the current leader.";
 				}
+
+				String deleteCommand = DELETE + ConfManager.getSpace()
+					+ parts[1];
+
+				LogEntry deleteEntry = raftNode.appendClientCommand(deleteCommand);
+
+				if (deleteEntry == null)
+				{
+					return "ERROR Unable to append command";
+				}
+
+				boolean deleteCommitted = raftNode.waitForCommit(
+						deleteEntry.getIndex(),
+						ConfManager.getClientWriteTimeoutMs());
+
+				if (!deleteCommitted)
+				{
+					return "ERROR Delete not confirmed committed. Check the key before retrying.";
+				}
+
+				return "OK Delete committed at log entry "
+					+ deleteEntry.getIndex();
 
 			case "PING":
 				logger.info("{} received PING request", nodeId);

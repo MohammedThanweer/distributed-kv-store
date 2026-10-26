@@ -15,10 +15,17 @@ import org.slf4j.LoggerFactory;
 public class KVClient {
 
 	private static final Logger logger = LoggerFactory.getLogger(KVClient.class);
-	private static final String HOST = ConfManager.getNode1Host();
-	private static final int PORT = ConfManager.getNode1Port();
+	
+	public static void main(String[] args) 
+	{
+		String HOST = ConfManager.getNode1Host();
+		int PORT = ConfManager.getNode1Port();
 
-	public static void main(String[] args) {
+		if (args.length >= 2)
+		{
+			HOST = args[0];
+			PORT = Integer.parseInt(args[1]);
+    		}
 
 		Socket socket = null;
 		Scanner console = null;
